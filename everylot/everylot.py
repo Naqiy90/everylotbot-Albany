@@ -34,13 +34,13 @@ class EveryLot:
             database (str): Path to SQLite database file
             search_format (str, optional): Format string for Google Street View search
             print_format (str, optional): Format string for social media posts
-            id_ (str, optional): Specific PIN10 ID to use
+            id_ (str, optional): Specific ID to use
             **kwargs: Additional options including logger
         """
         self.logger = kwargs.get('logger', logging.getLogger('everylot'))
 
-        # Set address formats - default to just address since city/state are constant
-        self.search_format = search_format or os.getenv('SEARCH_FORMAT', '{address}, CHICAGO, IL')
+        # Set address formats
+        self.search_format = search_format or os.getenv('SEARCH_FORMAT', '{address}')
         self.print_format = print_format or os.getenv('PRINT_FORMAT', '{address}')
 
         self.logger.debug('Search format: %s', self.search_format)
@@ -52,7 +52,7 @@ class EveryLot:
 
         # Get the next lot
         if id_:
-            # Get specific PIN10
+            # Get specific ID
             cursor = self.conn.execute(SPECIFIC_LOT_QUERY, (id_,))
         else:
             # Determine which platform we're posting to
@@ -71,15 +71,15 @@ class EveryLot:
             if row:
                 start_id = row['id']
             else:
-                # If no lots have been posted yet, check if START_PIN10 lot is already posted
-                start_id = os.getenv('START_PIN10', '0')
+                # If no lots have been posted yet, check if START_PIN lot is already posted
+                start_id = os.getenv('START_PIN', '0')
                 if start_id != '0':
                     cursor = self.conn.execute(f"""
                         SELECT posted_{platform} FROM lots 
                         WHERE id = ?
                     """, (start_id,))
                     row = cursor.fetchone()
-                    # If START_PIN10 lot is already posted, use it as start_id to find next
+                    # If START_PIN lot is already posted, use it as start_id to find next
                     # If not posted, get that specific lot
                     if row and row[0] != '0':
                         start_id = start_id  # Use as starting point for next lot
@@ -102,6 +102,7 @@ class EveryLot:
         fov, pitch = 65, 10
 
         try:
+            # Check for height columns if they exist in future
             floors = float(self.lot.get('floors', 2))
             if floors == 3:
                 fov = 72
@@ -165,8 +166,6 @@ class EveryLot:
     def streetviewable_location(self, key):
         """
         Determine the best location for Street View image.
-        Uses the formatted address with hardcoded city/state since this is Chicago-specific.
-        Only falls back to lat/lon if address formatting completely fails.
         
         Args:
             key (str): Google Geocoding API key
@@ -175,30 +174,26 @@ class EveryLot:
             str: Location string for Street View API
         """
         try:
-            # Get the address and ensure it's not empty/None
+            # Get the address
             address = self.lot.get('address')
-            if not address:
-                raise ValueError('No address available')
+            if address:
+                return address.strip()
                 
-            # Format with hardcoded city/state since this is Chicago-specific
-            location = f"{address}, CHICAGO, IL"
-            self.logger.debug('Using formatted address for Street View: %s', location)
-            return location
-            
-        except (KeyError, ValueError) as e:
-            # Only use lat/lon if we have valid coordinates
+            # Fallback to lat/lon
             lat = self.lot.get('lat', 0.0)
             lon = self.lot.get('lon', 0.0)
             if lat == 0.0 and lon == 0.0:
-                raise ValueError(f"No valid location data available: {str(e)}")
-            
-            self.logger.warning('Could not use address (%s), using lat/lon: %f,%f', str(e), lat, lon)
+                 raise ValueError("No valid location data available")
+                 
+            self.logger.warning('Using lat/lon for location: %f,%f', lat, lon)
             return f"{lat},{lon}"
+            
+        except (KeyError, ValueError) as e:
+            raise ValueError(f"No valid location data available: {str(e)}")
 
     def sanitize_address(self, address):
         """
         Convert address components into a clean, readable format.
-        Example: '2023 N DAMEN AVE' -> '2023 North Damen Avenue'
         
         Args:
             address (str): Raw address string
@@ -206,54 +201,7 @@ class EveryLot:
         Returns:
             str: Sanitized address string
         """
-        if not address:
-            return address
-
-        # Split address into components
-        parts = address.strip().split(',')[0].split()  # Take first part before comma
-        if not parts:
-            return address
-
-        # Direction mapping
-        directions = {
-            'N': 'North',
-            'S': 'South',
-            'E': 'East',
-            'W': 'West'
-        }
-
-        # Street type mapping
-        street_types = {
-            'AVE': 'Avenue',
-            'ST': 'Street',
-            'BLVD': 'Boulevard',
-            'RD': 'Road',
-            'DR': 'Drive',
-            'CT': 'Court',
-            'PL': 'Place',
-            'TER': 'Terrace',
-            'LN': 'Lane',
-            'WAY': 'Way',
-            'CIR': 'Circle',
-            'PKY': 'Parkway',
-            'SQ': 'Square'
-        }
-
-        # Process each part
-        result = []
-        for i, part in enumerate(parts):
-            part = part.strip()
-            if i == 0:  # Street number
-                result.append(part)
-            elif part in directions:  # Direction
-                result.append(directions[part])
-            elif part in street_types:  # Street type
-                result.append(street_types[part])
-                break  # Stop processing after street type
-            else:  # Street name
-                result.append(part.capitalize())
-
-        return ' '.join(result)
+        return address.strip() if address else ""
 
     def compose(self, media_id_string=None):
         """

@@ -14,12 +14,12 @@ def main():
     load_dotenv()
 
     parser = argparse.ArgumentParser(description='every lot bot for Twitter and Bluesky')
-    parser.add_argument('--database', type=str, default=os.getenv('DATABASE_PATH', 'cook_county_lots.db'),
+    parser.add_argument('--database', type=str, default=os.getenv('DATABASE_PATH', 'albany_lots.db'),
                       help='path to SQLite lots database')
-    parser.add_argument('--id', type=str, default=os.getenv('START_PIN10'),
-                      help='start with this PIN10 ID')
+    parser.add_argument('--id', type=str, default=None,
+                      help='start with this Parcel ID')
     parser.add_argument('-s', '--search-format', type=str, 
-                      default=os.getenv('SEARCH_FORMAT', '{address}, {city} {state}'),
+                      default=os.getenv('SEARCH_FORMAT', '{address}'),
                       help='Python format string for searching Google')
     parser.add_argument('-p', '--print-format', type=str,
                       default=os.getenv('PRINT_FORMAT', '{address}'),
@@ -51,7 +51,15 @@ def main():
 
     # Get the streetview image
     google_key = os.getenv('GOOGLE_API_KEY')
-    image = el.get_streetview_image(google_key)
+    image = None
+    if not args.dry_run:
+        try:
+            image = el.get_streetview_image(google_key)
+        except Exception as e:
+            logger.error(f"Failed to fetch image: {e}")
+            return
+    else:
+        logger.info("[Dry Run] Skipping image fetch")
 
     # Initialize posters based on environment settings
     post_ids = []
@@ -66,7 +74,7 @@ def main():
     post_data = el.compose()
     logger.info(f"Post text: {post_data['status']}")
 
-    if not args.dry_run:
+    if not args.dry_run and image:
         if enable_bluesky:
             try:
                 bluesky = BlueskyPoster(logger=logger)
@@ -91,6 +99,8 @@ def main():
                 logger.info("Posted to Twitter")
             except Exception as e:
                 logger.error(f"Failed to post to Twitter: {e}")
+    elif args.dry_run:
+        logger.info("[Dry Run] Would post to enabled platforms")
 
 if __name__ == '__main__':
     main()

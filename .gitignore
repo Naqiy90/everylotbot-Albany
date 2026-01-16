@@ -19,3 +19,14 @@ dist
 *.shp.xml
 
 *.env
+
+# Local database
+*.db
+*.sqlite
+
+# Temp scripts
+probe_*.py
+debug_*.py
+check_db_*.py
+albany_catalog.json
+.coverage
