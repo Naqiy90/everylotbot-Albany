@@ -23,6 +23,7 @@ dist
 # Local database
 *.db
 *.sqlite
+!albany_lots.db
 
 # Temp scripts
 probe_*.py

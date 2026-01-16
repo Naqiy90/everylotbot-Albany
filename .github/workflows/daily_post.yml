@@ -1,0 +1,49 @@
+name: Run EveryLot Bot
+
+on:
+  schedule:
+    # Run every hour at minute 0
+    - cron: '0 * * * *'
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+
+jobs:
+  post-lot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Need write permission to commit updated DB
+      
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run Bot
+      env:
+        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        BLUESKY_IDENTIFIER: ${{ secrets.BLUESKY_IDENTIFIER }}
+        BLUESKY_PASSWORD: ${{ secrets.BLUESKY_PASSWORD }}
+        ENABLE_BLUESKY: true
+        ENABLE_TWITTER: false
+        DATABASE_PATH: albany_lots.db
+        SEARCH_FORMAT: "{address}"
+        PRINT_FORMAT: "{address}"
+        # Start PIN shouldn't strictly be needed as it will read from DB, but good to have fallback/default
+        START_PIN: 0 
+      run: |
+        python -m everylot.bot
+
+    - name: Commit and Push state
+      uses: stefanzweifel/git-auto-commit-action@v5
+      with:
+        commit_message: "Automated: Mark lot as posted [skip ci]"
+        file_pattern: 'albany_lots.db'
